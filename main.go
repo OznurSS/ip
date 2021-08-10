@@ -98,7 +98,7 @@ func GetCountry(ip string) string {
 		log.Fatal(err)
 	}
 	fmt.Println(record.Country)
-	return record.Country.Names["tr"]
+	return record.Country.Names["en"]
 	
 
 }
