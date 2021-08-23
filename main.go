@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
@@ -10,20 +11,18 @@ import (
 	"os"
 	"strconv"
 	"time"
+
 	//"strings"
+	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	"github.com/oschwald/geoip2-golang"
 )
 
 var store = sessions.NewCookieStore([]byte(os.Getenv("SESSION_KEY")))
 
-func handler(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "index.html")
-}
-
 func iphandler(w http.ResponseWriter, r *http.Request) {
-	
-	ip, port, err := net.SplitHostPort(r.RemoteAddr)
+
+	ip, port, _ := net.SplitHostPort(r.RemoteAddr)
 	//session-name adindaki sessioni tarayicidan aliyoruz
 	session, _ := store.Get(r, "session-name")
 
@@ -48,7 +47,7 @@ func iphandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//ip.gohtml dosyasini okuyoruz
-	t, err := template.ParseFiles("ip.gohtml")
+	t, err := template.ParseFiles("index.html")
 	//Eger bu dosya yoksa hata oluusturuyor
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
@@ -56,16 +55,18 @@ func iphandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type Data struct {
-		Ip     string
-		Client string
+		Ip      string
+		Client  string
 		Country string
-		Port string
+		City    string
+		Port    string
 	}
 	dataToSend := Data{
-		Ip:     ip,
-		Client: session.Values["Client"].(string),
+		Ip:      ip,
+		Client:  session.Values["Client"].(string),
 		Country: GetCountry(ip),
-		Port: port,
+		City:    GetCity(ip),
+		Port:    port,
 	}
 
 	err = t.Execute(w, dataToSend)
@@ -74,9 +75,56 @@ func iphandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func addressHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	address := vars["address"]
+
+	type Data struct {
+		Ip      string
+		Country string
+		City    string
+	}
+	dataToSend := Data{
+		Ip:      address,
+		Country: GetCountry(address),
+		City:    GetCity(address),
+	}
+
+	t, err := template.ParseFiles("index.html")
+	//Eger bu dosya yoksa hata oluusturuyor
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	err = t.Execute(w, dataToSend)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func addressJsonHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	address := vars["address"]
+
+	type Data struct {
+		Ip      string
+		Country string
+		City    string
+	}
+	dataToSend := Data{
+		Ip:      address,
+		Country: GetCountry(address),
+		City:    GetCity(address),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(dataToSend)
+}
+
 func GetIP(r *http.Request) string {
 	forwarded := r.Header.Get("x-original-forwarded-for")
-	fmt.Printf("%v",forwarded)
+	fmt.Printf("%v", forwarded)
 	if forwarded != "" {
 
 		return forwarded
@@ -84,7 +132,7 @@ func GetIP(r *http.Request) string {
 	return r.RemoteAddr
 }
 func GetCountry(ip string) string {
-	
+
 	db, err := geoip2.Open("GeoLite2-Country.mmdb")
 	if err != nil {
 		log.Fatal(err)
@@ -99,13 +147,34 @@ func GetCountry(ip string) string {
 	}
 	fmt.Println(record.Country)
 	return record.Country.Names["en"]
-	
+}
 
+func GetCity(ip string) string {
+
+	db, err := geoip2.Open("GeoLite2-City.mmdb")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+	ipcheck := net.ParseIP(ip)
+	fmt.Println(ip)
+	fmt.Println(ipcheck)
+	record, err := db.City(ipcheck)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(record.City)
+	return record.City.Names["en"]
 }
 
 func main() {
+	r := mux.NewRouter()
+	r.HandleFunc("/", iphandler)
+	r.HandleFunc("/ip/{address}", addressHandler)
+	r.HandleFunc("/ip/{address}/json", addressJsonHandler)
 
-	http.HandleFunc("/", handler)
-	http.HandleFunc("/ip", iphandler)
+	fs := http.FileServer(http.Dir("./static"))
+	http.Handle("/static/", http.StripPrefix("/static/", fs))
+	http.Handle("/", r)
 	http.ListenAndServe(":8080", nil)
 }
