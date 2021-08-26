@@ -638,6 +638,27 @@
                     data-page="MainPageSearch"
                   >
                     <div class="ip-widget-outer" id="ip_widget_outer">
+
+                      <div class="ip-search-home" id="ipw_search_box">
+                        <input
+                          id="homepage-info-search-input"
+                          type="text"
+                          placeholder="Search any information about website"
+                          value=""
+                        />
+                        <button
+                          type="submit"
+                          class="js-gtm"
+                          data-gtm-dl='{
+                              "event": "JsonWidget",
+                              "JsonWidget_place": "MainPageSearch",
+                              "JsonWidget_query": null
+                          }'
+                          onclick="handleInfoSearch()"
+                          data-gtm-dl-val="#homepage-search-input"
+                        ></button>
+                      </div>
+
                       <div class="ip-search-home" id="ipw_search_box">
                         <input
                           id="homepage-search-input"
@@ -1295,6 +1316,9 @@
   <script>
     function handleSearch(){
       window.location.href=`/ip/${document.getElementById("homepage-search-input").value}`
+    }
+    function handleInfoSearch(){
+      window.location.href=`/info?address=${document.getElementById("homepage-info-search-input").value}`
     }
   </script>
   

@@ -4,13 +4,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io/ioutil"
 	"log"
 	"math/rand"
 	"net"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
+
+	"golang.org/x/net/html"
 
 	//"strings"
 	"github.com/gorilla/mux"
@@ -166,9 +170,81 @@ func GetCity(ip string) string {
 	fmt.Println(record.City)
 	return record.City.Names["en"]
 }
+func info(w http.ResponseWriter, r *http.Request) {
+
+	resp, _ := http.Get(r.URL.Query().Get("address"))
+	bytes, _ := ioutil.ReadAll(resp.Body)
+	doc, err := html.Parse(strings.NewReader(string(bytes)))
+	resp.Body.Close()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var title string
+	var description string
+	var keywords string
+
+	var f func(*html.Node)
+	f = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "title" {
+			title = n.FirstChild.Data
+		}
+		if n.Type == html.ElementNode && n.Data == "meta" {
+			var name string
+			var value string
+			for _, a := range n.Attr {
+				if a.Key == "name" {
+					name = a.Val
+				} else if a.Key == "content" {
+					value = a.Val
+				}
+
+				if name != "" && value != "" {
+					break
+				}
+			}
+
+			if name == "description" {
+				description = value
+			} else if name == "keywords" {
+				keywords = value
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			f(c)
+		}
+	}
+	f(doc)
+
+	t, err := template.ParseFiles("info.html")
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	type Data struct {
+		Title       string
+		Description string
+		Keywords    string
+	}
+	dataToSend := Data{
+		Title:       title,
+		Description: description,
+		Keywords:    keywords,
+	}
+
+	err = t.Execute(w, dataToSend)
+	if err != nil {
+		panic(err)
+	}
+
+}
 
 func main() {
+
 	r := mux.NewRouter()
+	r.HandleFunc("/info", info)
 	r.HandleFunc("/", iphandler)
 	r.HandleFunc("/ip/{address}", addressHandler)
 	r.HandleFunc("/ip/{address}/json", addressJsonHandler)
@@ -177,4 +253,5 @@ func main() {
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
 	http.Handle("/", r)
 	http.ListenAndServe(":8080", nil)
+
 }
